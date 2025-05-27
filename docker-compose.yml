@@ -1,0 +1,114 @@
+version: "3.8"
+
+services:
+  growheat-frontend:
+    image: notnebu/growheat-frontend:latest
+    container_name: growheat-frontend
+    ports:
+      - "443:443"
+    restart: unless-stopped
+    networks:
+      - SEP4_NETWORK
+
+  user-service:
+    image: notnebu/sep4-user-service:latest
+    container_name: user-service
+    ports:
+      - "5001:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - CONNECTION_STRING=${CONNECTION_STRING}
+      - JWT_SECRET=${JWT_SECRET}
+    restart: unless-stopped
+    networks:
+      - SEP4_NETWORK
+
+  gateway:
+    image: notnebu/yarp-gateway:latest
+    container_name: yarp-gateway
+    ports:
+      - "5107:5107"
+    volumes:
+      - ./certs:/certs
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - JWT_SECRET=${JWT_SECRET}
+    restart: unless-stopped
+    networks:
+      - SEP4_NETWORK
+
+  Sep4-ModelTraining-Service:
+    image: adresdocker/sep4-modeltraining-env:latest
+    container_name: model-training-container
+    ports:
+      - "5010:5000"
+    command: python /app/TrainModel/ModelTrainingAPI.py
+    networks:
+      - SEP4_NETWORK
+
+  Sep4-DataProcessing-Service:
+    image: adresdocker/sep4-dataprocessing-env:latest
+    container_name: data-processing-container
+    ports:
+      - "5000:5000"
+    working_dir: /app/DataProcessing
+    command: python DataProcessing.py
+    stdin_open: true
+    tty: true
+    env_file:
+      - ./envs/ml.env
+    networks:
+      - SEP4_NETWORK
+
+  Sep4-API-Service:
+    image: adresdocker/sep4-api-env:latest
+    container_name: api-container
+    ports:
+      - "5020:8080"
+    depends_on:
+      - Sep4-DataProcessing-Service
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+    networks:
+      - SEP4_NETWORK
+
+  Sep4-ML-Service:
+    image: adresdocker/sep4-ml-env:latest
+    container_name: ml-service-container
+    ports:
+      - "5030:8080"
+    depends_on:
+      - Sep4-ModelTraining-Service
+    environment:
+      - ASPNETCORE_URLS=http://+:8080
+      - DATABASE_URL=${DATABASE_URL}
+    networks:
+      - SEP4_NETWORK
+
+
+  sep4-java-iot-service:
+    image: dooneh/springboot-backend:latest
+    container_name: iot-container
+    ports:
+      - "5040:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL}
+      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME}
+      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD}
+      - SPRING_DATASOURCE_DRIVER_CLASS_NAME=${SPRING_DATASOURCE_DRIVER_CLASS_NAME}
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=${SPRING_JPA_HIBERNATE_DDL_AUTO}
+      - SPRING_JPA_SHOW_SQL=${SPRING_JPA_SHOW_SQL}
+      - SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL=${SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL}
+      - SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT=${SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT}
+      - SERVER_PORT=${SERVER_PORT}
+      - SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE=${SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE}
+      - SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE=${SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE}
+      - LOGGING_LEVEL_ORG_HIBERNATE_SQL=${LOGGING_LEVEL_ORG_HIBERNATE_SQL}
+      - LOGGING_LEVEL_ORG_HIBERNATE_TYPE_DESCRIPTOR_SQL_BASICBINDER=${LOGGING_LEVEL_ORG_HIBERNATE_TYPE_DESCRIPTOR_SQL_BASICBINDER}
+    networks:
+      - SEP4_NETWORK
+
+networks:
+  SEP4_NETWORK:
+    name: SEP4_NETWORK
+    driver: bridge
